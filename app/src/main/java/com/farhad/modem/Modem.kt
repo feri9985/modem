@@ -80,7 +80,8 @@ class Modem {
         val salted = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
             .generateSecret(PBEKeySpec(pw.toCharArray(), unhex(tag(ch, "salt")), iters, 256)).encoded
         val ck = hmac(salted, "Client Key")
-        val sk = MessageDigest.getInstance("SHA-256").digest(ck)val sig = hmac(sk, "$fn,$sn,$sn")
+        val sk = MessageDigest.getInstance("SHA-256").digest(ck)
+        val sig = hmac(sk, "$fn,$sn,$sn")
         val proof = hex(ByteArray(32) { (ck[it].toInt() xor sig[it].toInt()).toByte() })
         val r = http("POST", "/api/user/authentication_login",
             "$xmlHead<request><clientproof>$proof</clientproof><finalnonce>$sn</finalnonce></request>").second
