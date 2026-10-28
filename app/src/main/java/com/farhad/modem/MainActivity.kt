@@ -3,13 +3,11 @@ package com.farhad.modem
 import android.app.Activity
 import android.net.*
 import android.os.Bundle
-import android.webkit.JavascriptInterface
 import android.webkit.WebView
-import org.json.JSONObject
+import android.webkit.WebViewClient
 
 class MainActivity : Activity() {
     private lateinit var wv: WebView
-    private val api = Modem()
 
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
@@ -17,23 +15,24 @@ class MainActivity : Activity() {
         cm.requestNetwork(
             NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
             object : ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(n: Network) { cm.bindProcessToNetwork(n) }
+                override fun onAvailable(n: Network) {
+                    cm.bindProcessToNetwork(n)
+                    runOnUiThread { wv.loadUrl("http://192.168.8.1/") }
+                }
             })
         wv = WebView(this)
         setContentView(wv)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
-        wv.addJavascriptInterface(object {
-            @JavascriptInterface
-            fun req(id: Int, m: String, p: String, body: String) {
-                Thread {
-                    val r = api.call(m, p, body)
-                    runOnUiThread { wv.evaluateJavascript("cb($id,${JSONObject.quote(r)})", null) }
-                }.start()
+        wv.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(v: WebView, u: String) {
+                val js = assets.open("panel.js").bufferedReader().readText()
+                v.evaluateJavascript(js, null)
             }
-        }, "A")
-        wv.loadUrl("file:///android_asset/index.html")
+        }
     }
 
-    override fun onBackPressed() = finish()
+    override fun onBackPressed() {
+        if (wv.canGoBack()) wv.goBack() else finish()
+    }
 }
