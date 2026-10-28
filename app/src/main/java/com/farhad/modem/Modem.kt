@@ -45,11 +45,15 @@ class Modem {
             c.outputStream.use { it.write(b.toByteArray()) }
         }
         val code = c.responseCode
+        var one = ""
+        var plain = ""
         for ((k, v) in c.headerFields) {
             if (k == null || v.isNullOrEmpty()) continue
-            if (k.equals("RequestVerificationToken", true) || k.equals("RequestVerificationTokenone", true)) token = v[0]
+            if (k.equals("__RequestVerificationTokenone", true)) one = v[0]
+            if (k.equals("__RequestVerificationToken", true)) plain = v[0]
             if (k.equals("Set-Cookie", true)) v.firstOrNull { it.startsWith("SessionID=") }?.let { cookie = it.substringBefore(";") }
         }
+        if (one.isNotEmpty()) token = one else if (plain.isNotEmpty()) token = plain
         val text = (if (code < 400) c.inputStream else c.errorStream)?.readBytes()?.toString(Charsets.UTF_8) ?: ""
         return code to text
     }
@@ -62,8 +66,11 @@ class Modem {
 
     private fun login(u: String, pw: String): String {
         cookie = ""; token = ""
+        val tk = tag(http("GET", "/api/webserver/token", "").second, "token")
+        token = ""
         val st = http("GET", "/api/webserver/SesTokInfo", "").second
-        cookie = tag(st, "SesInfo"); token = tag(st, "TokInfo")
+        cookie = tag(st, "SesInfo")
+        token = if (tk.length > 32) tk.takeLast(32) else if (tk.isNotEmpty()) tk else tag(st, "TokInfo")
         val fn = hex(ByteArray(32).also { SecureRandom().nextBytes(it) })
         val ch = http("POST", "/api/user/challenge_login",
             "$xmlHead<request><username>$u</username><firstnonce>$fn</firstnonce><mode>1</mode></request>").second
@@ -73,11 +80,10 @@ class Modem {
         val salted = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
             .generateSecret(PBEKeySpec(pw.toCharArray(), unhex(tag(ch, "salt")), iters, 256)).encoded
         val ck = hmac(salted, "Client Key")
-        val sk = MessageDigest.getInstance("SHA-256").digest(ck)
-        val sig = hmac(sk, "$fn,$sn,$sn")
+        val sk = MessageDigest.getInstance("SHA-256").digest(ck)val sig = hmac(sk, "$fn,$sn,$sn")
         val proof = hex(ByteArray(32) { (ck[it].toInt() xor sig[it].toInt()).toByte() })
         val r = http("POST", "/api/user/authentication_login",
             "$xmlHead<request><clientproof>$proof</clientproof><finalnonce>$sn</finalnonce></request>").second
-        return if (r.contains("<error>")) "FAIL: $r" else "OK"
+        return if (r.contains("<error>")) "FAIL: $r | tokenLen=${token.length} cookieLen=${cookie.length} tk=${tk.length} st=${st.take(120)}" else "OK"
     }
 }
