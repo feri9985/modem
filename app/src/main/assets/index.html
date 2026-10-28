@@ -1,0 +1,23 @@
+$("ip").value=localStorage.ip||"192.168.8.1";
+async function login(){$("err").textContent="Logging in...";const r=await call("LOGIN",$("ip").value,$("user").value+"\n"+$("pw").value);log(r.b);
+ if(r.b=="OK"){localStorage.ip=$("ip").value;$("login").classList.add("hide");$("app").classList.remove("hide");tick();setInterval(tick,3000)}else $("err").textContent=r.b.slice(0,250)}
+async function tick(){if(!$("d").classList.contains("hide")){
+ $("sig").innerHTML=kv(await api("GET","/api/device/signal"));
+ const t=await api("GET","/api/monitoring/traffic-statistics");$("dl").textContent=rate(tag(t,"CurrentDownloadRate"));$("ul").textContent=rate(tag(t,"CurrentUploadRate"));
+ $("sta").innerHTML=kv(await api("GET","/api/monitoring/status"))}}
+function tab(id,btn){["d","b","h","t"].forEach(i=>$(i).classList.toggle("hide",i!=id));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b==btn));
+ if(id=="b")loadBands();if(id=="h")hosts();tick()}
+function draw(id,f,list,pre){const v=BigInt("0x"+(tag(NM,f)||"0"));$(id).innerHTML=list.map(b=><label><input type=checkbox data-b=${b} ${(v>>BigInt(b-1))&1n?"checked":""}>${pre}${b}</label>).join("")}
+async function loadBands(){NM=await api("GET","/api/net/net-mode");draw("lte","LTEBand",LTE,"B");
+ if(/<NRBand>/i.test(NM)){draw("nr","NRBand",NR,"n");$("nrnote").textContent=""}else{$("nr").innerHTML="";$("nrnote").textContent="This firmware does not expose NRBand in net-mode. Check the log/Explorer."}}
+const mask=id=>{let v=0n;document.querySelectorAll("#"+id+" input:checked").forEach(i=>v|=1n<<BigInt(i.dataset.b-1));return v.toString(16).toUpperCase()}
+function all_(on){document.querySelectorAll("#lte input,#nr input").forEach(i=>i.checked=on)}
+async function saveBands(){if(mask("lte")=="0")return alert("Select at least one 4G band");
+ let b='<?xml version="1.0" encoding="UTF-8"?><request>'+["NetworkMode","NetworkBand"].map(f=><${f}>${tag(NM,f)}</${f}>).join("")+<LTEBand>${mask("lte")}</LTEBand>;
+ if($("nr").children.length)b+=<NRBand>${mask("nr")}</NRBand>;b+="</request>";
+ const r=await api("POST","/api/net/net-mode",b);alert(r.includes("OK")?"Applied":"Modem replied: "+r.slice(0,200))}
+async function hosts(){const x=await api("GET","/api/lan/HostInfo"),d=new DOMParser().parseFromString(x,"text/xml");
+ $("hl").innerHTML=[...d.querySelectorAll("Host")].map(h=><tr><td>${tag(h.outerHTML,"HostName")||"?"}<td>${tag(h.outerHTML,"IpAddress")}<br>${tag(h.outerHTML,"MacAddress")}</tr>).join("")||kv(x)}
+async function reboot(){if(confirm("Reboot modem?"))log(await api("POST","/api/device/control",'<?xml version="1.0" encoding="UTF-8"?><request><Control>1</Control></request>'))}
+async function explore(){$("eo").textContent=await api($("em").value,$("ep").value,$("eb").value)}
+</script></body></html>
