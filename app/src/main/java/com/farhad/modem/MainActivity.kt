@@ -24,8 +24,10 @@ class MainActivity : Activity() {
         setContentView(wv)
         wv.settings.javaScriptEnabled = true
         wv.settings.domStorageEnabled = true
-        wv.settings.useWideViewPort = true
+        // layout width = real phone width (no desktop-size page)
+        wv.settings.useWideViewPort = false
         wv.settings.loadWithOverviewMode = false
+        wv.settings.setSupportZoom(false)
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(v: WebView, u: String) {
                 val js = assets.open("panel.js").bufferedReader().readText()
