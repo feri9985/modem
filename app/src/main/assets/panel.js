@@ -19,6 +19,11 @@
       localStorage.mmcap = JSON.stringify(a.slice(0, 12));
     } catch (e) {}
   };
+  var ofe = window.fetch;
+  window.fetch = function (u, o) {
+    try { if (!window.__mmown && o && o.method && String(o.method).toUpperCase() == "POST") cap(typeof u == "string" ? u : u.url, o.body); } catch (e) {}
+    return ofe.apply(this, arguments);
+  };
   var xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (m, u) { this._m = m; this._u = u; return xo.apply(this, arguments); };
   XMLHttpRequest.prototype.send = function (b) { if (this._m && String(this._m).toUpperCase() == "POST") cap(this._u, b); return xs.apply(this, arguments); };
@@ -78,7 +83,10 @@
   }
   async function post(u, b) {
     var t = await tok();
-    var r = await fetch(u, { method: "POST", credentials: "include", headers: { "__RequestVerificationToken": t, "Content-Type": "application/xml" }, body: b });
+    window.__mmown = 1;
+    var pr = fetch(u, { method: "POST", credentials: "include", headers: { "__RequestVerificationToken": t, "Content-Type": "application/xml" }, body: b });
+    window.__mmown = 0;
+    var r = await pr;
     var x = await r.text();
     log("POST " + u + " -> " + x);
     return x;
@@ -146,7 +154,7 @@
     [["rsrp", "4G RSRP"], ["rsrq", "4G RSRQ"], ["sinr", "4G SINR"], ["rssi", "4G RSSI"]].forEach(function (d) { var r = row(d[0], d[1]); o.rows[d[0]] = r; sig.append(r.root); });
     [["rsrp", "5G RSRP"], ["rsrq", "5G RSRQ"], ["sinr", "5G SINR"]].forEach(function (d) { var r = row(d[0], d[1]); o.rows["nr" + d[0]] = r; sig.append(r.root); });
     var quick = function (name, m, b) {
-      return h("button", { className: "b", textContent: name, onclick: async function () { toast(name + " ..."); var r = await post("/api/net/net-mode", BODY(m, b, "7FFFFFFFFFFFFFFF", "")); toast(r.indexOf("OK") > -1 ? name + " ✓" : "Error"); loadBands(); } });
+      return h("button", { className: "b", textContent: name, onclick: async function () { toast(name + " ..."); var r = await post("/api/net/net-mode", BODY(m, b, "7FFFFFFFFFFFFFFF", m == "08" ? o.opt.value : "")); toast(r.indexOf("OK") > -1 ? name + " ✓" : "خطا: " + r.slice(0, 120)); loadBands(); } });
     };
     o.chips = h("div", { className: "chips" }); o.nrchips = h("div", { className: "chips" });
     o.opt = h("select", {}, h("option", { value: "", textContent: "5G: بدون تغییر" }), h("option", { value: "0", textContent: "5G NSA" }), h("option", { value: "1", textContent: "5G SA" }), h("option", { value: "2", textContent: "5G SA+NSA" }));
@@ -157,14 +165,14 @@
       h("div", { className: "top" }, o.opn, o.mode),
       h("div", { className: "sp" }, o.dl, o.ul), o.info, sig,
       h("div", { className: "sec", textContent: "حالت شبکه" }),
-      h("div", { className: "row" }, quick("Auto", "00", "3FFFFFFF"), quick("5G", "00", "00000000"), quick("4G", "03", "3FFFFFFF"), quick("3G", "02", "3FFFFFFF"), quick("2G", "01", "3FFFFFFF")),
+      h("div", { className: "row" }, quick("Auto", "00", "3FFFFFFF"), quick("5G فقط", "08", "3FFFFFFF"), quick("4G", "03", "3FFFFFFF"), quick("3G", "02", "3FFFFFFF"), quick("2G", "01", "3FFFFFFF")),
       h("div", { className: "sec", textContent: "قفل باند: باندها رو انتخاب کن، بعد Apply" }),
       h("div", { className: "row" }, o.opt, h("label", {}, o.en5, " 4G+5G")),
       h("div", { className: "row" },
         h("button", { className: "b", textContent: "همه باندها", onclick: function () { all(true); } }),
         h("button", { className: "b", textContent: "پاک کردن", onclick: function () { all(false); } })),
       h("div", { className: "sec", textContent: "باندهای 4G" }), o.chips,
-      h("div", { className: "sec", textContent: "باندهای 5G" }), o.nrchips);
+      h("div", { className: "sec", textContent: "باندهای 5G (قفل باند هنوز آماده نیست؛ فعلاً از دکمه‌ی «5G فقط» استفاده کن)" }), o.nrchips);
     o.foot = h("button", {
       className: "b p", style: "width:100%", textContent: "Apply", onclick: async function () {
         var v = mask(o.chips), nv = mask(o.nrchips);
@@ -245,12 +253,12 @@
       add("== net-mode-list ==\n" + (await get("/api/net/net-mode-list")).slice(0, 1800));
       var hm = await get("/html/home.html"), cand = {};
       (hm.match(/[A-Za-z0-9_\/\.\-]*devel[A-Za-z0-9_\/\.\-]*/gi) || []).forEach(function (x) { cand[x] = 1; });
-      ["/html/developmode.html", "/html/developer.html", "/html/developeroptions.html", "/html/develop.html"].forEach(function (x) { cand[x] = 1; });
+      ["developmode","developer","developeroptions","developeroption","developer_options","developer_option","developermode","develop","development","developopt","developeropt","devmode"].map(function (n) { return "/html/" + n + ".html"; }).forEach(function (x) { cand[x] = 1; });
       add("== links ==\n" + Object.keys(cand).join(" "));
       for (var u in cand) {
         var p = u.charAt(0) == "/" ? u : "/html/" + u, pg = "";
         try { pg = await get(p); } catch (e) { continue; }
-        if (pg.length < 300 || !/band/i.test(pg)) continue;
+        add("page " + p + " len=" + pg.length); if (pg.length < 300) continue;
         add("== page " + p + " (" + pg.length + ") ==");
         var texts = [pg], srcs = (pg.match(/src="([^"]+\.js[^"]*)"/g) || []).slice(0, 8);
         for (var i = 0; i < srcs.length; i++) {
@@ -271,7 +279,7 @@
   function tools() {
     var m = h("select", {}, h("option", { textContent: "GET" }), h("option", { textContent: "POST" }));
     var p = h("input", { type: "text", value: "/api/net/net-mode" }), b = h("textarea", { rows: 2 }), o = h("pre");
-    var out = h("textarea", { rows: 7, placeholder: "نتیجه اینجا میاد" });
+    var out = h("textarea", { rows: 7, placeholder: "نتیجه اینجا میاد" }), pg = h("input", { type: "text", value: "/html/developmode.html" });
     var capEl = h("pre", { textContent: (JSON.parse(localStorage.mmcap || "[]")).join("\n\n") || "(خالی)" });
     body.replaceChildren(
       h("button", { className: "b r", style: "width:100%", textContent: "Reboot modem", onclick: function () { if (confirm("Reboot modem?")) { toast("Reboot..."); post("/api/device/control", "<request><Control>1</Control></request>"); } } }),
@@ -279,6 +287,8 @@
       h("button", { className: "b p", style: "width:100%", textContent: "جمع‌آوری اطلاعات 5G", onclick: function () { out.value = "در حال جمع‌آوری..."; collect(out); } }), out,
       h("div", { className: "sec", textContent: "درخواست‌های ثبت‌شده از صفحه‌ی مودم" }), capEl,
       h("button", { className: "b", style: "width:100%", textContent: "پاک کردن", onclick: function () { localStorage.mmcap = "[]"; capEl.textContent = "(خالی)"; } }),
+      h("div", { className: "sec", textContent: "باز کردن یه صفحه‌ی مودم (مثلاً Developer options)" }), pg,
+      h("button", { className: "b", style: "width:100%", textContent: "باز کن", onclick: function () { location.href = pg.value; } }),
       h("div", { className: "sec", textContent: "Explorer" }), m, p, b,
       h("button", { className: "b", style: "width:100%", textContent: "Send", onclick: async function () { o.textContent = m.value == "GET" ? await get(p.value) : await post(p.value, b.value); } }), o,
       h("div", { className: "sec", textContent: "Log" }), logEl);
