@@ -26,7 +26,10 @@ class MainActivity : Activity() {
         wv.settings.domStorageEnabled = true
         wv.settings.useWideViewPort = false
         wv.settings.loadWithOverviewMode = false
-        wv.settings.setSupportZoom(false)
+        // pinch-to-zoom enabled
+        wv.settings.setSupportZoom(true)
+        wv.settings.builtInZoomControls = true
+        wv.settings.displayZoomControls = false
         wv.setInitialScale(100)
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(v: WebView, u: String) {
