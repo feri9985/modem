@@ -33,8 +33,9 @@
     "#mm *{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}" +
     "#mm .hd{background:linear-gradient(90deg,#c7000b,#6e0a1c);padding:9px 12px;display:flex;align-items:center;justify-content:space-between;font-weight:bold;font-size:16px}" +
     "#mm .hd button{width:auto;margin:0;padding:5px 16px;background:rgba(0,0,0,.35);border:0;border-radius:8px;color:#fff;font:inherit}" +
-    "#mm .tb{display:flex;gap:6px;padding:6px;background:#141b24}" +
-    "#mm .tb button{flex:1;margin:0;padding:12px 0;background:#202a37;border:0;border-radius:10px;color:#c9d3df;font:inherit;font-size:15px}" +
+    "#mm .tb{display:flex;gap:6px;padding:6px;background:#141b24;overflow-x:auto}" +
+    "#mm .tb::-webkit-scrollbar{display:none}" +
+    "#mm .tb button{flex:1 0 auto;margin:0;padding:12px 9px;background:#202a37;border:0;border-radius:10px;color:#c9d3df;font:inherit;font-size:13px}" +
     "#mm .tb button.on{background:#2f7bf5;color:#fff;font-weight:bold}" +
     "#mm .bd{flex:1;overflow-x:hidden;overflow-y:auto;padding:8px}" +
     "#mm .ft{padding:8px;background:#141b24;border-top:1px solid #243041;display:none}" +
@@ -64,12 +65,19 @@
     "#mm select{flex:1}#mm label{white-space:nowrap;font-size:15px;padding:0 4px}#mm input[type=checkbox]{width:20px;height:20px;vertical-align:middle}" +
     "#mm .dv{background:#161e29;border-radius:12px;padding:12px;margin:7px 0}" +
     "#mm .dv b{font-size:17px;display:block}#mm .dv span{font-size:14px;color:#9fb0c3;word-break:break-all}" +
+    "#mm .abig{font-size:60px;font-weight:bold;text-align:center;padding:18px 0 6px;line-height:1.1}" +
+    "#mm .abig small{font-size:20px;opacity:.7;margin-left:6px;font-weight:normal}" +
+    "#mm .b.x{flex:none;width:52px;padding:13px 0;background:#4a2530}" +
     "#mm pre{background:#080b10;padding:8px;border-radius:8px;font-size:12px;white-space:pre-wrap;max-height:200px;overflow:auto}" +
     "#mmb{position:fixed;right:14px;bottom:14px;z-index:100000;width:58px;height:58px;border-radius:29px;border:0;background:#c7000b;color:#fff;font-size:26px;box-shadow:0 2px 8px rgba(0,0,0,.5)}" +
     "#mmt{position:fixed;left:50%;bottom:130px;transform:translateX(-50%);background:#000d;color:#fff;padding:11px 16px;border-radius:22px;z-index:100001;display:none;max-width:90%;text-align:center;font-size:14px}";
   document.head.append(h("style", { textContent: css }));
 
-  var get = function (u) { return fetch(u, { credentials: "include" }).then(function (r) { return r.text(); }); };
+  // timeout لازمه: اگه مودم ریبوت بشه و درخواست آویزون بمونه، بدون این busy برای همیشه true می‌مونه و دیگه آپدیت نمی‌شه
+  var get = function (u, ms) {
+    var c = new AbortController(), tm = setTimeout(function () { c.abort(); }, ms || 12000);
+    return fetch(u, { credentials: "include", signal: c.signal }).then(function (r) { return r.text(); }).finally(function () { clearTimeout(tm); });
+  };
   var tag = function (x, t) { var m = x.match(new RegExp("<" + t + ">([^<]*)</" + t + ">", "i")); return m ? m[1] : ""; };
   var num = function (v) { var m = String(v || "").match(/-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : NaN; };
   var logEl = h("pre");
@@ -82,26 +90,35 @@
     return m.length ? m[m.length - 1][1] : "";
   }
   async function post(u, b) {
-    var t = await tok();
-    window.__mmown = 1;
-    var pr = fetch(u, { method: "POST", credentials: "include", headers: { "__RequestVerificationToken": t, "Content-Type": "application/xml" }, body: b });
-    window.__mmown = 0;
-    var r = await pr;
-    var x = await r.text();
-    log("POST " + u + " -> " + x);
-    return x;
+    var c = new AbortController(), tm;
+    try {
+      var t = await tok();
+      tm = setTimeout(function () { c.abort(); }, 20000);
+      window.__mmown = 1;
+      var pr = fetch(u, { method: "POST", credentials: "include", headers: { "__RequestVerificationToken": t, "Content-Type": "application/xml" }, body: b, signal: c.signal });
+      window.__mmown = 0;
+      var r = await pr;
+      var x = await r.text();
+      log("POST " + u + " -> " + x);
+      return x;
+    } catch (e) {
+      // قبلاً خطای شبکه بی‌صدا قورت داده می‌شد و هیچ پیامی نمی‌اومد
+      window.__mmown = 0;
+      log("POST " + u + " ERR " + e);
+      return "ERR " + e;
+    } finally { clearTimeout(tm); }
   }
   var netType = function (m) { return { "0": "No Service", "1": "2G", "2": "2G", "3": "2G", "41": "3G", "42": "3G", "43": "3G", "44": "3G", "45": "3G+", "46": "3G+", "101": "LTE 4G", "1011": "LTE CA 4G+", "111": "5G NR" }[m] || m; };
 
   var body = h("div", { className: "bd" }), foot = h("div", { className: "ft" }), cur = "h", timer, home, cnt = 0;
   var tabs = h("div", { className: "tb" }), tabBtns = {};
-  [["h", "Home"], ["o", "Operator"], ["d", "Devices"], ["t", "Tools"]].forEach(function (t) {
+  [["h", "Home"], ["a", "Align"], ["g", "History"], ["o", "Operator"], ["d", "Devices"], ["t", "Tools"]].forEach(function (t) {
     tabBtns[t[0]] = h("button", { textContent: t[1], onclick: function () { go(t[0]); } });
     tabs.append(tabBtns[t[0]]);
   });
   var btn;
   var closePanel = function () {
-    panel.style.display = "none"; clearInterval(timer);
+    panel.style.display = "none"; clearInterval(timer); clearTimeout(beepT); beepOn = false; persistHist();
     document.body.style.display = ""; document.documentElement.style.overflow = ""; btn.style.display = "";
   };
   var panel = h("div", { id: "mm" }, h("div", { className: "hd" }, h("span", { textContent: "Huawei 5G CPE Max" }), h("button", { textContent: "✕", onclick: closePanel })), tabs, body, foot);
@@ -112,13 +129,15 @@
   var openPanel = function () {
     document.body.style.display = "none"; document.documentElement.style.overflow = "hidden"; window.scrollTo(0, 0);
     btn.style.display = "none"; panel.style.display = "flex";
-    go(cur); clearInterval(timer); timer = setInterval(tick, 1500);
+    go(cur);
   };
   btn = h("button", { id: "mmb", textContent: "📶", onclick: openPanel });
   document.documentElement.append(panel, btn, toastEl);
 
   function go(t) {
     cur = t;
+    clearInterval(timer); timer = setInterval(tick, t == "a" ? 800 : 1500);
+    if (t != "a") { clearTimeout(beepT); beepOn = false; }
     Object.keys(tabBtns).forEach(function (k) { tabBtns[k].className = k == t ? "on" : ""; });
     foot.style.display = "none"; foot.replaceChildren();
     if (t == "h") {
@@ -126,7 +145,79 @@
       body.replaceChildren(home.root);
       foot.replaceChildren(home.foot); foot.style.display = "block";
       tick();
-    } else if (t == "o") ops(); else if (t == "d") devs(); else tools();
+    } else if (t == "a") { beepOn = false; align(); tick(); }   // هر بار وارد Align بشی بیپ خاموشه
+    else if (t == "g") histTab();
+    else if (t == "o") ops(); else if (t == "d") devs(); else tools();
+  }
+
+  // ---------- shared state: profiles, signal history, auto-switch ----------
+  var profs = function () { try { return JSON.parse(localStorage.getItem("mmprof") || "[]"); } catch (e) { return []; } };
+  var saveProfs = function (a) { try { localStorage.setItem("mmprof", JSON.stringify(a)); } catch (e) { toast("ذخیره نشد"); } };
+  var pad2 = function (n) { return ("0" + n).slice(-2); };
+  var hm = function (t) { var d = new Date(t); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); };
+  var numOrNull = function (s) { var n = num(s); return isNaN(n) ? null : n; };
+
+  // تاریخچه: هر ۱۰ ثانیه یه نمونه، حداکثر ۲ ساعت، توی localStorage هم ذخیره می‌شه
+  var HMAX = 720, SAMPLE_MS = 10000, hist = [], evs = [], nSamp = 0, sampleBusy = false, hv = null;
+  try { hist = JSON.parse(localStorage.getItem("mmhist") || "[]"); evs = JSON.parse(localStorage.getItem("mmev") || "[]"); } catch (e) { hist = []; evs = []; }
+  if (!Array.isArray(hist)) hist = [];
+  if (!Array.isArray(evs)) evs = [];
+  function persistHist() {
+    try { localStorage.setItem("mmhist", JSON.stringify(hist)); localStorage.setItem("mmev", JSON.stringify(evs)); } catch (e) {}
+  }
+  function addEv(txt) { evs.push({ t: Date.now(), x: txt }); if (evs.length > 40) evs.shift(); persistHist(); }
+  async function sample() {
+    if (sampleBusy || document.hidden) return;
+    sampleBusy = true;
+    try {
+      var a = await get("/api/device/signal", 8000);
+      if (a.indexOf("<response") < 0) return;   // لاگین نیست یا مودم داره بالا میاد: نمونه ثبت نکن
+      var b = numOrNull(tag(a, "band"));
+      hist.push({ t: Date.now(), a: numOrNull(tag(a, "rsrp")), s: numOrNull(tag(a, "sinr")), na: numOrNull(tag(a, "nrrsrp")), ns: numOrNull(tag(a, "nrsinr")), b: b ? b : null, p: numOrNull(tag(a, "pci")) });
+      if (hist.length > HMAX) hist.splice(0, hist.length - HMAX);
+      if (++nSamp % 6 == 0) persistHist();
+    } catch (e) { } finally { sampleBusy = false; }
+  }
+
+  // سوییچ خودکار پروفایل وقتی سیگنال مدتی ضعیف بمونه
+  var AK = "mmauto", autoMsg = "", autoBusy = false;
+  var auto = { on: false, thr: 5, mins: 3, cur: "", t0: 0, hold: 0, tried: {} };
+  try { Object.assign(auto, JSON.parse(localStorage.getItem(AK) || "{}")); } catch (e) { }
+  if (!auto.tried || typeof auto.tried != "object") auto.tried = {};
+  var saveAuto = function () { try { localStorage.setItem(AK, JSON.stringify(auto)); } catch (e) { } };
+  var setAutoMsg = function (s) { autoMsg = s; if (home && home.autoEl) home.autoEl.textContent = (auto.cur ? "«" + auto.cur + "» · " : "") + s; };
+  var mainVal = function (p) { return p.ns !== null ? p.ns : p.s; };   // 5G SINR اگه بود، وگرنه 4G
+  async function autoTick() {
+    if (!auto.on || autoBusy || document.hidden) return;
+    var ps = profs(), now = Date.now(), win = auto.mins * 60000;
+    if (ps.length < 2) return setAutoMsg("حداقل ۲ پروفایل ذخیره کن");
+    if (!home || !home.applyBands) return setAutoMsg("در انتظار آماده شدن پنل...");
+    if (now < auto.hold) return setAutoMsg("روی بهترین پروفایل نگه داشته شد تا " + hm(auto.hold));
+    var pts = hist.filter(function (p) { return p.t >= Math.max(auto.t0, now - win); });
+    var span = pts.length ? pts[pts.length - 1].t - pts[0].t : 0;
+    if (now - auto.t0 < win || pts.length < 3 || span < win * 0.7) return setAutoMsg("در حال بررسی سیگنال...");
+    var sum = 0;
+    pts.forEach(function (p) { var v = mainVal(p); sum += v === null ? -20 : v; });   // بدون سرویس = خیلی بد
+    var avg = Math.round(sum / pts.length * 10) / 10;
+    if (avg >= auto.thr) { auto.tried = {}; saveAuto(); return setAutoMsg("سیگنال خوبه (میانگین " + avg + " dB)"); }
+    if (auto.cur) auto.tried[auto.cur] = avg;
+    var target = ps.filter(function (p) { return !(p.n in auto.tried); })[0], why = "امتحان";
+    if (!target) {   // همه امتحان شدن: بهترین رو انتخاب کن و نیم ساعت دست نزن
+      var sc = function (p) { return auto.tried[p.n] === undefined ? -99 : auto.tried[p.n]; };
+      target = ps.slice().sort(function (x, y) { return sc(y) - sc(x); })[0]; why = "بهترین";
+      auto.hold = now + 30 * 60000; auto.tried = {};
+    }
+    autoBusy = true;
+    try {
+      if (target.n != auto.cur) {
+        var okk = await home.applyBands(BigInt("0x" + target.l), BigInt("0x" + target.r), target.o, target.e, target.n, true);
+        if (!okk) { auto.t0 = now; saveAuto(); return setAutoMsg("اعمال «" + target.n + "» ناموفق بود؛ بعداً دوباره"); }
+        auto.cur = target.n;
+        addEv("سوییچ خودکار ← «" + target.n + "» (" + why + "، میانگین قبلی " + avg + " dB)");
+      }
+      auto.t0 = now + 45000; saveAuto();   // ۴۵ ثانیه برای وصل شدن دوباره‌ی مودم
+      setAutoMsg("«" + target.n + "» اعمال شد؛ صبر برای ارزیابی");
+    } finally { autoBusy = false; }
   }
 
   // ---------- home ----------
@@ -197,19 +288,85 @@
         h("button", { className: "b", textContent: "پاک کردن", onclick: function () { all(false); } })),
       h("div", { className: "sec", textContent: "باندهای 4G" }), o.chips,
       h("div", { className: "sec", textContent: "باندهای 5G (قفل باند هنوز آماده نیست؛ فعلاً از دکمه‌ی «5G فقط» استفاده کن)" }), o.nrchips);
+    // v/nv: ماسک باندهای 4G/5G (BigInt)، opt: حالت 5G، en5: فعال بودن 4G+5G
+    // خروجی: true اگه مودم OK داد. isAuto=true یعنی سوییچ خودکار (حالت خودکار رو ریست نکن)
+    var applyBands = async function (v, nv, opt, en5, label, isAuto) {
+      if (v == 0n && nv == 0n) { toast("حداقل یک باند انتخاب کن"); return false; }
+      if (nv != 0n && !o.nrTag) { toast("API قفل 5G هنوز مشخص نشده. Tools ← جمع‌آوری اطلاعات 5G رو بزن و متن رو بفرست"); return false; }
+      toast(isAuto ? "سوییچ خودکار: «" + label + "»..." : "در حال اعمال...");
+      var lte = v == 0n ? "7FFFFFFFFFFFFFFF" : v.toString(16).toUpperCase();
+      var extra = nv != 0n ? "<" + o.nrTag + ">" + nv.toString(16).toUpperCase() + "</" + o.nrTag + ">" : "";
+      var r = await post("/api/net/net-mode", en5 ? BODY("00", "00000000", lte, opt, extra) : BODY("03", "3FFFFFFF", lte, "", extra));
+      var good = r.indexOf("OK") > -1;
+      toast(good ? (label ? "«" + label + "» اعمال شد ✓" : "اعمال شد ✓") : "خطا: " + r.slice(0, 80));
+      if (good && !isAuto) { auto.cur = label || ""; auto.t0 = Date.now() + 45000; auto.tried = {}; saveAuto(); }
+      loadBands();
+      return good;
+    };
+    o.applyBands = applyBands;
     o.foot = h("button", {
-      className: "b p", style: "width:100%", textContent: "Apply", onclick: async function () {
-        var v = mask(o.chips), nv = mask(o.nrchips);
-        if (v == 0n && nv == 0n) return toast("حداقل یک باند انتخاب کن");
-        if (nv != 0n && !o.nrTag) return toast("API قفل 5G هنوز مشخص نشده. Tools ← جمع‌آوری اطلاعات 5G رو بزن و متن رو بفرست");
-        toast("در حال اعمال...");
-        var lte = v == 0n ? "7FFFFFFFFFFFFFFF" : v.toString(16).toUpperCase();
-        var extra = nv != 0n ? "<" + o.nrTag + ">" + nv.toString(16).toUpperCase() + "</" + o.nrTag + ">" : "";
-        var r = await post("/api/net/net-mode", o.en5.checked ? BODY("00", "00000000", lte, o.opt.value, extra) : BODY("03", "3FFFFFFF", lte, "", extra));
-        toast(r.indexOf("OK") > -1 ? "اعمال شد ✓" : "خطا: " + r.slice(0, 80));
-        loadBands();
-      }
+      className: "b p", style: "width:100%", textContent: "Apply",
+      onclick: function () { applyBands(mask(o.chips), mask(o.nrchips), o.opt.value, o.en5.checked); }
     });
+
+    // ---------- پروفایل‌ها ----------
+    var descP = function (p) {
+      var l = bitsOf(BigInt("0x" + p.l), 64), r = bitsOf(BigInt("0x" + p.r), 128);
+      var s = l.length > 5 ? "4G×" + l.length : l.map(function (n) { return "B" + n; }).join(" ");
+      if (r.length) s += (s ? " " : "") + (r.length > 4 ? "5G×" + r.length : r.map(function (n) { return "n" + n; }).join(" "));
+      return s;
+    };
+    var renderProfs = function () {
+      var a = profs();
+      if (!a.length) { o.profBox.replaceChildren(h("div", { className: "tag", textContent: "هنوز پروفایلی ذخیره نشده" })); return; }
+      o.profBox.replaceChildren.apply(o.profBox, a.map(function (p, i) {
+        var del = h("button", {
+          className: "b x", textContent: "✕", onclick: function () {
+            var b = this;
+            if (!b.dataset.s) { b.dataset.s = "1"; b.textContent = "؟"; setTimeout(function () { delete b.dataset.s; b.textContent = "✕"; }, 2500); return; }
+            var all = profs(); all.splice(i, 1); saveProfs(all); renderProfs();
+          }
+        });
+        var go1 = h("button", {
+          className: "b", textContent: p.n + "  (" + descP(p) + ")",
+          onclick: function () { applyBands(BigInt("0x" + p.l), BigInt("0x" + p.r), p.o, p.e, p.n); }
+        });
+        return h("div", { className: "row", style: "margin-bottom:6px" }, go1, del);
+      }));
+    };
+    var saveProfile = function () {
+      var v = mask(o.chips), nv = mask(o.nrchips), name = o.pname.value.trim();
+      if (v == 0n && nv == 0n) return toast("اول باندها رو انتخاب کن");
+      if (!name) return toast("یه اسم برای پروفایل بنویس");
+      var a = profs().filter(function (p) { return p.n != name; });
+      a.push({ n: name, l: v.toString(16), r: nv.toString(16), o: o.opt.value, e: o.en5.checked });
+      saveProfs(a); o.pname.value = ""; renderProfs(); toast("پروفایل ذخیره شد ✓");
+    };
+    o.profBox = h("div");
+    o.pname = h("input", { type: "text", placeholder: "اسم پروفایل (مثلاً n78 شب)" });
+    o.profSave = h("div", {},
+      h("div", { className: "sec", textContent: "ذخیره‌ی انتخاب فعلی باندها به‌عنوان پروفایل" }),
+      h("div", { className: "row" }, o.pname, h("button", { className: "b", style: "flex:none;width:auto;padding:13px 16px", textContent: "ذخیره", onclick: saveProfile })));
+    // سوییچ خودکار: اگه میانگین SINR تو N دقیقه زیر حد بود، پروفایل بعدی رو امتحان می‌کنه
+    var optsOf = function (a, unit) { return a.map(function (v) { return h("option", { value: String(v), textContent: v + unit }); }); };
+    o.autoOn = h("input", { type: "checkbox", checked: !!auto.on });
+    o.autoThr = h("select", {}, optsOf([0, 3, 5, 8, 10], " dB")); o.autoThr.value = String(auto.thr);
+    o.autoMins = h("select", {}, optsOf([2, 3, 5, 10], " دقیقه")); o.autoMins.value = String(auto.mins);
+    o.autoEl = h("div", { className: "tag", textContent: auto.on ? "فعال" : "خاموش" });
+    var autoSave = function () {
+      var was = auto.on;
+      auto.on = !!o.autoOn.checked; auto.thr = +o.autoThr.value; auto.mins = +o.autoMins.value;
+      if (auto.on && !was) { auto.t0 = Date.now(); auto.tried = {}; auto.hold = 0; toast("سوییچ خودکار روشن شد"); }
+      saveAuto();
+      if (!auto.on) o.autoEl.textContent = "خاموش"; else autoTick();
+    };
+    o.autoOn.onchange = o.autoThr.onchange = o.autoMins.onchange = autoSave;
+    o.root.insertBefore(h("div", {},
+      h("div", { className: "sec", textContent: "پروفایل‌ها (یک‌ضربه = اعمال)" }), o.profBox,
+      h("div", { className: "sec", textContent: "سوییچ خودکار: اگه میانگین SINR (اولی) تو این مدت (دومی) زیر حد بمونه، پروفایل بعدی امتحان می‌شه. حداقل ۲ پروفایل لازمه" }),
+      h("div", { className: "row" }, h("label", {}, o.autoOn, " فعال"), o.autoThr, o.autoMins), o.autoEl), o.root.children[6]);
+    o.root.append(o.profSave);
+    renderProfs();
     return o;
   }
   function mkChips(box, supBits, curBits, pre, freq, cls) {
@@ -236,7 +393,11 @@
   }
   var busy = false;
   async function tick() {
-    if (cur != "h" || panel.style.display != "flex" || busy || !home) return;
+    if (panel.style.display != "flex") return;
+    if (cur == "g") { if (hv) hv.redraw(); return; }
+    if (busy) return;
+    if (cur == "a") return alignTick();
+    if (cur != "h" || !home) return;
     busy = true;
     try {
       var a = await get("/api/device/signal"), t = await get("/api/monitoring/traffic-statistics");
@@ -255,11 +416,161 @@
     busy = false;
   }
 
+  // ---------- align (antenna alignment) ----------
+  var AO = [["auto", "خودکار (5G SINR، اگه نبود 4G)"], ["sinr", "4G SINR"], ["rsrp", "4G RSRP"], ["nrsinr", "5G SINR"], ["nrrsrp", "5G RSRP"]];
+  var al = null, AC = null, beepOn = false, beepT = 0, lastQ = -1;
+  var metOf = function (k) { return MET[k.replace(/^nr/, "")]; };
+  var qOf = function (n, m) { return Math.max(0, Math.min(100, (n - m[2]) * 100 / (m[3] - m[2]))); };
+  function beepOnce(q) {
+    if (!AC) return;
+    try {
+      var os = AC.createOscillator(), g = AC.createGain(), t = AC.currentTime;
+      os.type = "sine"; os.frequency.value = 350 + q * 9;
+      os.connect(g); g.connect(AC.destination);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.4, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      os.start(t); os.stop(t + 0.1);
+    } catch (e) {}
+  }
+  // هرچی سیگنال بهتر، بیپ تیزتر و سریع‌تر
+  function beepLoop() {
+    clearTimeout(beepT);
+    if (!beepOn || cur != "a" || panel.style.display != "flex") return;
+    if (lastQ >= 0) beepOnce(lastQ);
+    beepT = setTimeout(beepLoop, lastQ >= 0 ? 1000 - lastQ * 8.5 : 800);
+  }
+  function align() {
+    var sel = h("select", {}, AO.map(function (x) { return h("option", { value: x[0], textContent: x[1] }); }));
+    var big = h("div", { className: "abig", textContent: "-" }), lab = h("div", { className: "sec", style: "text-align:center" });
+    var bar = row("sinr", ""), peak = h("span", { className: "tag", textContent: "بهترین: -" }), info = h("div", { className: "info" });
+    al = { sel: sel, big: big, lab: lab, bar: bar, peak: peak, info: info, pk: null, key: "" };
+    sel.onchange = function () { al.pk = null; lastQ = -1; };
+    var bb = h("button", {
+      className: "b" + (beepOn ? " p" : ""), textContent: beepOn ? "🔊 بیپ روشن" : "🔈 بیپ خاموش", onclick: function () {
+        beepOn = !beepOn;
+        if (beepOn) {
+          try { AC = AC || new (window.AudioContext || window.webkitAudioContext)(); if (AC.resume) AC.resume(); }
+          catch (e) { toast("صدا روی این WebView کار نکرد"); }
+        }
+        this.textContent = beepOn ? "🔊 بیپ روشن" : "🔈 بیپ خاموش"; this.classList.toggle("p", beepOn);
+        beepLoop();
+      }
+    });
+    body.replaceChildren(
+      h("div", { className: "sec", textContent: "آنتن یا مودم رو آروم جابه‌جا کن؛ عدد بالاتر و بیپ تندتر = سیگنال بهتر. هر جابه‌جایی رو چند ثانیه صبر کن تا عدد جا بیفته." }),
+      sel, big, lab, bar.root,
+      h("div", { className: "row", style: "margin-top:8px" }, peak,
+        h("button", { className: "b", style: "flex:none;width:auto;padding:8px 14px", textContent: "ریست", onclick: function () { al.pk = null; peak.textContent = "بهترین: -"; } })),
+      info,
+      h("div", { className: "row", style: "margin-top:8px" }, bb));
+  }
+  async function alignTick() {
+    if (!al) return;
+    busy = true;
+    try {
+      var a = await get("/api/device/signal"), key = al.sel.value;
+      if (key == "auto") key = isNaN(num(tag(a, "nrsinr"))) ? "sinr" : "nrsinr";
+      var n = num(tag(a, key)), m = metOf(key), nm = "";
+      AO.forEach(function (x) { if (x[0] == key) nm = x[1]; });
+      if (key != al.key) { al.key = key; al.pk = null; al.bar.m = m; }
+      if (isNaN(n)) {
+        lastQ = -1; al.pk = null;
+        al.big.textContent = "-"; al.big.style.color = "";
+        al.lab.textContent = nm + " — سیگنالی دریافت نمی‌شه";
+        al.peak.textContent = "بهترین: -"; setRow(al.bar, NaN);
+      } else {
+        lastQ = qOf(n, m);
+        var col = n >= m[4] ? G : n >= m[5] ? Y : R;
+        al.big.replaceChildren(String(n), h("small", { textContent: m[1] }));
+        al.big.style.color = col;
+        al.lab.textContent = nm;
+        if (al.pk === null || n > al.pk) al.pk = n;
+        al.peak.textContent = "بهترین: " + al.pk + " " + m[1];
+        setRow(al.bar, n);
+      }
+      var items = [["Band", tag(a, "band") && tag(a, "band") != "0" ? "B" + tag(a, "band") : ""], ["PCI", tag(a, "pci")], ["Cell", tag(a, "cell_id")]];
+      al.info.replaceChildren.apply(al.info, items.filter(function (i) { return i[1]; }).map(function (i) { return h("span", { className: "tag", textContent: i[0] + ": " + i[1] }); }));
+    } catch (e) { log("align ERR " + e); }
+    busy = false;
+  }
+
+  // ---------- history (signal chart) ----------
+  var HM = [["s", "4G SINR", "sinr"], ["a", "4G RSRP", "rsrp"], ["ns", "5G SINR", "sinr"], ["na", "5G RSRP", "rsrp"]];
+  function drawChart(cv, pts, key, m, t0, t1, marks) {
+    var c = cv.getContext("2d"), W = cv.width, H = cv.height, L = 52, R = 10, T = 10, B = 26;
+    var X = function (t) { return L + (t - t0) * (W - L - R) / (t1 - t0); };
+    var Y = function (v) { return T + (1 - (Math.max(m[2], Math.min(m[3], v)) - m[2]) / (m[3] - m[2])) * (H - T - B); };
+    c.clearRect(0, 0, W, H);
+    c.fillStyle = "rgba(46,204,113,.13)"; c.fillRect(L, Y(m[3]), W - L - R, Y(m[4]) - Y(m[3]));
+    c.fillStyle = "rgba(245,197,66,.13)"; c.fillRect(L, Y(m[4]), W - L - R, Y(m[5]) - Y(m[4]));
+    c.fillStyle = "rgba(229,72,77,.13)"; c.fillRect(L, Y(m[5]), W - L - R, Y(m[2]) - Y(m[5]));
+    c.font = "20px sans-serif"; c.fillStyle = "#8a97a8"; c.textAlign = "right";
+    [m[2], m[5], m[4], m[3]].forEach(function (v) { c.fillText(String(v), L - 6, Y(v) + 7); });
+    c.textAlign = "left"; c.fillText(hm(t0), L, H - 5); c.textAlign = "right"; c.fillText(hm(t1), W - R, H - 5);
+    (marks || []).forEach(function (k) {
+      c.strokeStyle = k.c; c.lineWidth = 2; c.beginPath(); c.moveTo(X(k.t), T); c.lineTo(X(k.t), H - B); c.stroke();
+    });
+    c.strokeStyle = "#5aa2ff"; c.fillStyle = "#5aa2ff"; c.lineWidth = 3; c.beginPath();
+    var prev = null;
+    pts.forEach(function (p) {
+      var v = p[key];
+      if (v === null) { prev = null; return; }
+      if (prev === null || p.t - prev > 60000) c.moveTo(X(p.t), Y(v)); else c.lineTo(X(p.t), Y(v));
+      prev = p.t;
+    });
+    c.stroke();
+    if (pts.length <= 150) pts.forEach(function (p) { if (p[key] !== null) c.fillRect(X(p.t) - 2, Y(p[key]) - 2, 4, 4); });
+  }
+  function histTab() {
+    var opt = function (x) { return h("option", { value: x[0], textContent: x[1] }); };
+    var ms = h("select", {}, HM.map(function (x) { return opt([x[0], x[1]]); }));
+    var rs = h("select", {}, [["15", "۱۵ دقیقه"], ["60", "۱ ساعت"], ["120", "۲ ساعت"]].map(opt)); rs.value = "60";
+    var cv = h("canvas", { width: 720, height: 300, style: "width:100%;height:auto;background:#0f151d;border-radius:12px;margin-top:6px" });
+    var stat = h("div", { className: "info" }), evEl = h("pre");
+    var redraw = function () {
+      var def = HM.filter(function (x) { return x[0] == ms.value; })[0], key = def[0], m = MET[def[2]];
+      var now = Date.now(), t0 = now - (+rs.value) * 60000;
+      var pts = hist.filter(function (p) { return p.t >= t0; }), lines = [];
+      for (var i = 1; i < hist.length; i++) {
+        var a = hist[i - 1], b = hist[i], ch = [];
+        if (b.t < t0 || b.t - a.t > 120000) continue;   // فاصله‌ی زیاد = اپ بسته بوده، تغییر حساب نکن
+        if (a.b !== b.b) ch.push((a.b === null ? "-" : "B" + a.b) + "→" + (b.b === null ? "-" : "B" + b.b));
+        if (a.p !== b.p) ch.push("PCI " + (a.p === null ? "-" : a.p) + "→" + (b.p === null ? "-" : b.p));
+        if (ch.length) lines.push({ t: b.t, x: ch.join("  "), c: "rgba(255,255,255,.35)" });
+      }
+      evs.forEach(function (e) { if (e.t >= t0) lines.push({ t: e.t, x: e.x, c: "#ff9f43" }); });
+      lines.sort(function (x, y) { return y.t - x.t; });
+      var vs = pts.map(function (p) { return p[key]; }).filter(function (v) { return v !== null; });
+      var items = [];
+      if (vs.length) {
+        var sum = 0; vs.forEach(function (v) { sum += v; });
+        items = [["کمترین", Math.min.apply(null, vs)], ["میانگین", Math.round(sum / vs.length * 10) / 10], ["بیشترین", Math.max.apply(null, vs)], ["نمونه", vs.length]];
+      }
+      stat.replaceChildren.apply(stat, items.length
+        ? items.map(function (i) { return h("span", { className: "tag", textContent: i[0] + ": " + i[1] }); })
+        : [h("span", { className: "tag", textContent: "هنوز داده‌ای نیست؛ هر ۱۰ ثانیه یه نمونه ثبت می‌شه" })]);
+      evEl.textContent = lines.slice(0, 12).map(function (l) { return hm(l.t) + "  " + l.x; }).join("\n") || "(تغییر باند/سلول یا سوییچی نبوده)";
+      drawChart(cv, pts, key, m, t0, now, lines);
+    };
+    ms.onchange = rs.onchange = redraw;
+    hv = { redraw: redraw };
+    body.replaceChildren(
+      h("div", { className: "sec", textContent: "نمودار سیگنال (حتی وقتی این تب بسته‌ست ثبت می‌شه). خط‌های عمودی = تغییر باند/سلول، نارنجی = سوییچ خودکار" }),
+      h("div", { className: "row" }, ms, rs), cv, stat,
+      h("div", { className: "sec", textContent: "رویدادها" }), evEl,
+      h("button", { className: "b", style: "width:100%;margin-top:8px", textContent: "پاک کردن تاریخچه", onclick: function () { hist = []; evs = []; persistHist(); redraw(); } }));
+    redraw();
+  }
+
   // ---------- devices ----------
   async function devs() {
     body.replaceChildren(h("div", { className: "sec", textContent: "Loading..." }));
-    var x = await get("/api/lan/HostInfo");
-    if (x.indexOf("<Host") < 0) x = await get("/api/wlan/host-list");
+    var x = "";
+    try {
+      x = await get("/api/lan/HostInfo");
+      if (x.indexOf("<Host") < 0) x = await get("/api/wlan/host-list");
+    } catch (e) { return body.replaceChildren(h("div", { className: "sec", textContent: "ارتباط با مودم برقرار نشد: " + e })); }
     var d = new DOMParser().parseFromString(x, "text/xml"), els = [];
     d.querySelectorAll("Host").forEach(function (e) {
       var g = function (n) { var f = e.querySelector(n); return f ? f.textContent : ""; };
@@ -289,7 +600,7 @@
     var scan = async function () {
       list.replaceChildren(h("div", { className: "sec", textContent: "در حال جستجو... ۱ تا ۳ دقیقه طول می‌کشه و اینترنت قطع می‌شه. صبر کن." }));
       var x = "";
-      try { x = await get("/api/net/plmn-list"); } catch (e) { x = "ERR " + e; }
+      try { x = await get("/api/net/plmn-list", 240000); } catch (e) { x = "ERR " + e; }
       log("plmn-list: " + x);
       var d = new DOMParser().parseFromString(x, "text/xml"), els = [];
       d.querySelectorAll("Network").forEach(function (e) {
@@ -380,5 +691,8 @@
       h("div", { className: "sec", textContent: "Log" }), logEl);
   }
 
+  setInterval(sample, SAMPLE_MS); setInterval(autoTick, 30000); sample();
+  try { if (window.addEventListener) window.addEventListener("pagehide", persistHist); } catch (e) {}
+  if (window.__mmdbg) window.__mmdbg({ autoTick: autoTick, sample: sample, auto: auto, hist: function () { return hist; }, setHist: function (a) { hist = a; } });
   try { if (/home\.html/.test(location.href) && !sessionStorage.mmo) { sessionStorage.mmo = 1; openPanel(); } } catch (e) {}
 })();
