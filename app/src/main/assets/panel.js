@@ -95,7 +95,7 @@
 
   var body = h("div", { className: "bd" }), foot = h("div", { className: "ft" }), cur = "h", timer, home, cnt = 0;
   var tabs = h("div", { className: "tb" }), tabBtns = {};
-  [["h", "Home"], ["d", "Devices"], ["t", "Tools"]].forEach(function (t) {
+  [["h", "Home"], ["o", "Operator"], ["d", "Devices"], ["t", "Tools"]].forEach(function (t) {
     tabBtns[t[0]] = h("button", { textContent: t[1], onclick: function () { go(t[0]); } });
     tabs.append(tabBtns[t[0]]);
   });
@@ -126,7 +126,7 @@
       body.replaceChildren(home.root);
       foot.replaceChildren(home.foot); foot.style.display = "block";
       tick();
-    } else if (t == "d") devs(); else tools();
+    } else if (t == "o") ops(); else if (t == "d") devs(); else tools();
   }
 
   // ---------- home ----------
@@ -267,6 +267,55 @@
     });
     if (!els.length) els.push(h("pre", { textContent: x.slice(0, 1500) }));
     body.replaceChildren(h("div", { className: "sec", textContent: "دستگاه‌های متصل: " + (els.length) }), ...els);
+  }
+
+  // ---------- operator ----------
+  async function ops() {
+    var st = h("pre"), list = h("div");
+    var rat = h("select", {}, h("option", { value: "7", textContent: "4G/5G NSA (LTE)" }), h("option", { value: "2", textContent: "3G" }), h("option", { value: "0", textContent: "2G" }));
+    var pin = h("input", { type: "text", placeholder: "PLMN مثلا 43235" });
+    var show = async function () {
+      try {
+        var r = await get("/api/net/register"), pl = await get("/api/net/current-plmn");
+        st.textContent = "حالت: " + (tag(r, "Mode") == "1" ? "دستی" : "خودکار") + "\nPLMN: " + (tag(r, "Plmn") || "-") + "  Rat: " + (tag(r, "Rat") || "-") + "\nاپراتور فعلی: " + (tag(pl, "FullName") || "-") + " " + tag(pl, "Numeric");
+      } catch (e) { st.textContent = "ERR " + e; }
+    };
+    var setReg = async function (mode, plmn, rt) {
+      toast("در حال اعمال...");
+      var x = await post("/api/net/register", "<request><Mode>" + mode + "</Mode><Plmn>" + plmn + "</Plmn><Rat>" + rt + "</Rat></request>");
+      toast(x.indexOf("OK") > -1 ? "ثبت شد ✓ چند ثانیه صبر کن" : "خطا: " + x.slice(0, 100));
+      setTimeout(show, 5000);
+    };
+    var scan = async function () {
+      list.replaceChildren(h("div", { className: "sec", textContent: "در حال جستجو... ۱ تا ۳ دقیقه طول می‌کشه و اینترنت قطع می‌شه. صبر کن." }));
+      var x = "";
+      try { x = await get("/api/net/plmn-list"); } catch (e) { x = "ERR " + e; }
+      log("plmn-list: " + x);
+      var d = new DOMParser().parseFromString(x, "text/xml"), els = [];
+      d.querySelectorAll("Network").forEach(function (e) {
+        var g = function (n) { var f = e.querySelector(n); return f ? f.textContent : ""; };
+        var num = g("Numeric"), rt = g("Rat"), sv = g("State");
+        els.push(h("div", { className: "dv" },
+          h("b", { textContent: g("FullName") || g("ShortName") || num }),
+          h("span", { textContent: num + "  Rat:" + rt + "  " + (sv == "2" ? "(فعلی)" : sv == "3" ? "(ممنوع)" : "") }),
+          h("button", { className: "b p", style: "width:100%;margin-top:6px", textContent: "اتصال به این اپراتور", onclick: function () { setReg(1, num, rt); } })));
+      });
+      list.replaceChildren.apply(list, els.length ? els : [h("pre", { textContent: x.slice(0, 1200) })]);
+    };
+    body.replaceChildren(
+      h("div", { className: "sec", textContent: "وضعیت فعلی" }), st,
+      h("button", { className: "b", style: "width:100%", textContent: "خودکار (Auto)", onclick: function () { setReg(0, "", ""); } }),
+      h("div", { className: "sec", textContent: "انتخاب سریع (بدون جستجو)" }), rat,
+      h("div", { className: "row" },
+        h("button", { className: "b", textContent: "ایرانسل", onclick: function () { setReg(1, "43235", rat.value); } }),
+        h("button", { className: "b", textContent: "همراه اول", onclick: function () { setReg(1, "43211", rat.value); } }),
+        h("button", { className: "b", textContent: "رایتل", onclick: function () { setReg(1, "43220", rat.value); } })),
+      h("div", { className: "sec", textContent: "PLMN دلخواه" }), pin,
+      h("button", { className: "b", style: "width:100%", textContent: "اتصال به PLMN بالا", onclick: function () { if (pin.value) setReg(1, pin.value.trim(), rat.value); } }),
+      h("div", { className: "sec", textContent: "جستجوی اپراتورهای اطراف" }),
+      h("button", { className: "b p", style: "width:100%", textContent: "جستجو", onclick: function () { if (confirm("جستجو اینترنت رو چند دقیقه قطع می‌کنه. ادامه؟")) scan(); } }),
+      list);
+    show();
   }
 
   // ---------- tools ----------
