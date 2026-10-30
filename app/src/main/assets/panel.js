@@ -154,7 +154,31 @@
     [["rsrp", "4G RSRP"], ["rsrq", "4G RSRQ"], ["sinr", "4G SINR"], ["rssi", "4G RSSI"]].forEach(function (d) { var r = row(d[0], d[1]); o.rows[d[0]] = r; sig.append(r.root); });
     [["rsrp", "5G RSRP"], ["rsrq", "5G RSRQ"], ["sinr", "5G SINR"]].forEach(function (d) { var r = row(d[0], d[1]); o.rows["nr" + d[0]] = r; sig.append(r.root); });
     var quick = function (name, m, b) {
-      return h("button", { className: "b", textContent: name, onclick: async function () { toast(name + " ..."); var r = await post("/api/net/net-mode", BODY(m, b, "7FFFFFFFFFFFFFFF", m == "08" ? o.opt.value : "")); toast(r.indexOf("OK") > -1 ? name + " ✓" : "خطا: " + r.slice(0, 120)); loadBands(); } });
+      return h("button", { className: "b", textContent: name, onclick: async function () {
+        toast(name + " ...");
+        if (m != "08") {
+          var r0 = await post("/api/net/net-mode", BODY(m, b, "7FFFFFFFFFFFFFFF", ""));
+          toast(r0.indexOf("OK") > -1 ? name + " ✓" : "خطا: " + r0.slice(0, 120));
+          loadBands();
+          return;
+        }
+        var opts = o.opt.value !== "" ? [o.opt.value] : ["2", "1", "0"];
+        var bands = ["3FFFFFFF", "00000000"];
+        var done = "";
+        outer:
+        for (var i = 0; i < opts.length; i++) {
+          for (var j = 0; j < bands.length; j++) {
+            var r = await post("/api/net/net-mode", BODY("08", bands[j], "7FFFFFFFFFFFFFFF", opts[i]));
+            if (r.indexOf("OK") < 0) continue;
+            await new Promise(function (res) { setTimeout(res, 1500); });
+            var nm = await get("/api/net/net-mode");
+            log("check: " + nm);
+            if (tag(nm, "NetworkMode") == "08") { done = "5G فقط ✓ (option " + opts[i] + ")"; break outer; }
+          }
+        }
+        toast(done || "5G فقط ثبت نشد؛ Tools ← Log رو ببین");
+        loadBands();
+      } });
     };
     o.chips = h("div", { className: "chips" }); o.nrchips = h("div", { className: "chips" });
     o.opt = h("select", {}, h("option", { value: "", textContent: "5G: بدون تغییر" }), h("option", { value: "0", textContent: "5G NSA" }), h("option", { value: "1", textContent: "5G SA" }), h("option", { value: "2", textContent: "5G SA+NSA" }));
@@ -246,30 +270,43 @@
   }
 
   // ---------- tools ----------
-  async function collect(out) {
+  async function collect(out, extra) {
     var t = [], add = function (s) { t.push(s); out.value = t.join("\n").slice(0, 7000); };
+    var norm = function (f) { f = f.replace(/^(\.\.?\/)+/, ""); return f.charAt(0) == "/" ? f : (/^html\//.test(f) ? "/" + f : "/html/" + f); };
     try {
-      add("== net-mode ==\n" + await get("/api/net/net-mode"));
-      add("== net-mode-list ==\n" + (await get("/api/net/net-mode-list")).slice(0, 1800));
-      var hm = await get("/html/home.html"), cand = {};
-      (hm.match(/[A-Za-z0-9_\/\.\-]*devel[A-Za-z0-9_\/\.\-]*/gi) || []).forEach(function (x) { cand[x] = 1; });
-      ["developmode","developer","developeroptions","developeroption","developer_options","developer_option","developermode","develop","development","developopt","developeropt","devmode"].map(function (n) { return "/html/" + n + ".html"; }).forEach(function (x) { cand[x] = 1; });
-      add("== links ==\n" + Object.keys(cand).join(" "));
-      for (var u in cand) {
-        var p = u.charAt(0) == "/" ? u : "/html/" + u, pg = "";
-        try { pg = await get(p); } catch (e) { continue; }
-        add("page " + p + " len=" + pg.length); if (pg.length < 300) continue;
-        add("== page " + p + " (" + pg.length + ") ==");
-        var texts = [pg], srcs = (pg.match(/src="([^"]+\.js[^"]*)"/g) || []).slice(0, 8);
-        for (var i = 0; i < srcs.length; i++) {
-          try { texts.push(await get("/" + srcs[i].slice(5, -1).replace(/^\.?\//, "").replace(/^\.\.\//, ""))); } catch (e) {}
-        }
+      var shell = await get("/html/content.html"), texts = [shell];
+      var srcs = (shell.match(/src="([^"]+\.js[^"]*)"/g) || []).slice(0, 14);
+      for (var i = 0; i < srcs.length; i++) {
+        try { var u = new URL(srcs[i].slice(5, -1), location.origin + "/html/content.html"); texts.push(await get(u.pathname + u.search)); } catch (e) {}
+      }
+      add("scripts: " + srcs.length);
+      var found = {}, ctx = [];
+      texts.forEach(function (tx) {
+        var re = /[\w\-\/\.#]*devel[\w\-\/\.#]*/ig, m, n = 0;
+        while ((m = re.exec(tx)) && n < 30) { found[m[0]] = 1; if (ctx.length < 4) ctx.push(tx.slice(Math.max(0, m.index - 60), m.index + 120).replace(/\s+/g, " ")); n++; }
+      });
+      add("== devel tokens ==\n" + Object.keys(found).join("\n"));
+      ctx.forEach(function (c) { add("..." + c); });
+      var base = (await get("/html/zz_notfound.html")).length, cand = {};
+      if (extra) cand[norm(extra)] = 1;
+      Object.keys(found).forEach(function (f) { if (/\.html/i.test(f)) cand[norm(f)] = 1; });
+      ["developmode", "developer", "developeroptions", "developOptions", "developerOptions", "develop_options", "developer_options", "develop", "development", "developopt"].forEach(function (n) { cand["/html/" + n + ".html"] = 1; });
+      var lines = [], real = [];
+      for (var p in cand) {
+        var pg = ""; try { pg = await get(p); } catch (e) { lines.push(p + " ERR"); continue; }
+        lines.push(p + " len=" + pg.length + (pg.length == base ? " (=default page)" : ""));
+        if (pg.length > 300 && pg.length != base) real.push([p, pg]);
+      }
+      add("== pages ==\n" + lines.join("\n"));
+      for (var r = 0; r < real.length; r++) {
+        var txs = [real[r][1]], ss = (real[r][1].match(/src="([^"]+\.js[^"]*)"/g) || []).slice(0, 6);
+        for (var k = 0; k < ss.length; k++) { try { var uu = new URL(ss[k].slice(5, -1), location.origin + real[r][0]); txs.push(await get(uu.pathname + uu.search)); } catch (e) {} }
         var apis = {};
-        texts.forEach(function (tx) { (tx.match(/\/api\/[\w\-\/]+/g) || []).forEach(function (a) { apis[a] = 1; }); });
-        add("APIs: " + Object.keys(apis).join(" "));
-        texts.forEach(function (tx) {
-          var re = /lock/ig, m, n = 0;
-          while ((m = re.exec(tx)) && n < 3) { add("…" + tx.slice(Math.max(0, m.index - 80), m.index + 200).replace(/\s+/g, " ")); n++; re.lastIndex = m.index + 250; }
+        txs.forEach(function (tx) { (tx.match(/\/api\/[\w\-\/]+/g) || []).forEach(function (x) { apis[x] = 1; }); });
+        add("== " + real[r][0] + " APIs ==\n" + Object.keys(apis).join(" "));
+        txs.forEach(function (tx) {
+          var re = /band.?lock|lockband|nrband|lock_band/ig, m, n = 0;
+          while ((m = re.exec(tx)) && n < 3) { add("..." + tx.slice(Math.max(0, m.index - 100), m.index + 220).replace(/\s+/g, " ")); n++; re.lastIndex = m.index + 300; }
         });
       }
     } catch (e) { add("ERR " + e); }
@@ -284,7 +321,7 @@
     body.replaceChildren(
       h("button", { className: "b r", style: "width:100%", textContent: "Reboot modem", onclick: function () { if (confirm("Reboot modem?")) { toast("Reboot..."); post("/api/device/control", "<request><Control>1</Control></request>"); } } }),
       h("div", { className: "sec", textContent: "برای ساخت قفل n78/n48: این دکمه رو بزن، صبر کن تا «done» بیاد، متن رو کپی کن و برام بفرست." }),
-      h("button", { className: "b p", style: "width:100%", textContent: "جمع‌آوری اطلاعات 5G", onclick: function () { out.value = "در حال جمع‌آوری..."; collect(out); } }), out,
+      h("button", { className: "b p", style: "width:100%", textContent: "جمع‌آوری اطلاعات 5G", onclick: function () { out.value = "در حال جمع‌آوری..."; collect(out, pg.value); } }), out,
       h("div", { className: "sec", textContent: "درخواست‌های ثبت‌شده از صفحه‌ی مودم" }), capEl,
       h("button", { className: "b", style: "width:100%", textContent: "پاک کردن", onclick: function () { localStorage.mmcap = "[]"; capEl.textContent = "(خالی)"; } }),
       h("div", { className: "sec", textContent: "باز کردن یه صفحه‌ی مودم (مثلاً Developer options)" }), pg,
