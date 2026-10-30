@@ -313,7 +313,7 @@
       h("div", { className: "sec", textContent: "PLMN دلخواه" }), pin,
       h("button", { className: "b", style: "width:100%", textContent: "اتصال به PLMN بالا", onclick: function () { if (pin.value) setReg(1, pin.value.trim(), rat.value); } }),
       h("div", { className: "sec", textContent: "جستجوی اپراتورهای اطراف" }),
-      h("button", { className: "b p", style: "width:100%", textContent: "جستجو", onclick: function () { if (confirm("جستجو اینترنت رو چند دقیقه قطع می‌کنه. ادامه؟")) scan(); } }),
+      h("button", { className: "b p", style: "width:100%", textContent: "جستجو (اینترنت چند دقیقه قطع می‌شه)", onclick: function () { toast("شروع جستجو..."); scan(); } }),
       list);
     show();
   }
