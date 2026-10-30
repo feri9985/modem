@@ -3,6 +3,7 @@ package com.farhad.modem
 import android.app.Activity
 import android.net.*
 import android.os.Bundle
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 
@@ -31,6 +32,10 @@ class MainActivity : Activity() {
         wv.settings.builtInZoomControls = true
         wv.settings.displayZoomControls = false
         wv.setInitialScale(100)
+        // بدون WebChromeClient، confirm()/alert() (مثل تأیید ریبوت) اصلاً نشون داده نمی‌شن
+        wv.webChromeClient = WebChromeClient()
+        // موقع جهت‌یابی آنتن صفحه خاموش نشه
+        wv.keepScreenOn = true
         wv.webViewClient = object : WebViewClient() {
             override fun onPageFinished(v: WebView, u: String) {
                 val js = assets.open("panel.js").bufferedReader().readText()
