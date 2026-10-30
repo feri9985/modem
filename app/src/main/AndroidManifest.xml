@@ -5,7 +5,9 @@
     <application android:label="Huawei 5G CPE" android:icon="@drawable/ic_launcher"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
-        <activity android:name=".MainActivity" android:exported="true">
+        <!-- configChanges: با چرخوندن گوشی اکتیویتی دوباره ساخته نشه (صفحه‌ی مودم و پنل ریست نشن) -->
+        <activity android:name=".MainActivity" android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
